@@ -1,0 +1,649 @@
+<!doctype html>
+<html lang="el">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Packing Time Tool (Picker KPI)</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    .muted { color:#555; }
+    .wrap { display:grid; grid-template-columns: 1fr; gap: 14px; max-width: 980px; }
+    .card { padding: 16px; border: 1px solid #ddd; border-radius: 14px; background: #fff; }
+    label { display:block; margin-top: 10px; font-weight: 650; }
+    input, select { width: 100%; padding: 10px; margin-top: 6px; border: 1px solid #ccc; border-radius: 12px; font-size: 15px; background:#fff; }
+    .row { display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .row2 { display:grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
+    .btns { display:flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    button { padding: 10px 12px; border: 1px solid #ccc; border-radius: 12px; font-size: 14px; cursor: pointer; background:#f6f6f6; }
+    button.primary { border-color:#999; background:#111; color:#fff; }
+    button.danger { border-color:#d9a; background:#fff5f7; }
+    .out { margin-top: 12px; padding: 12px; background:#f7f7f7; border-radius: 12px; }
+    .big { font-size: 20px; font-weight: 850; }
+    .ok { color:#0a7; font-weight: 800; }
+    .bad { color:#b30; font-weight: 800; }
+    .warn { color:#a60; font-weight: 800; }
+    table { width:100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border-bottom: 1px solid #eee; padding: 10px 8px; text-align:left; font-size: 13px; vertical-align: top; }
+    th { position: sticky; top: 0; background:#fff; z-index: 1; }
+    .pill { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid #ddd; background:#fff; }
+    .pill.ok { border-color:#bfe7d7; background:#eefaf5; }
+    .pill.bad { border-color:#f1b7b7; background:#fff0f0; }
+    .pill.warn { border-color:#f0d19a; background:#fff7e8; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .footer { font-size: 12px; color:#666; margin-top: 6px; }
+    @media (max-width: 880px) {
+      .row, .row2, .grid2 { grid-template-columns: 1fr; }
+      th { position: static; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Packing Time Calculator + History</h1>
+      <div class="muted">
+        Υπολογίζει packing time από: picking sec/item, orders/hour, avg items. Κρατάει ιστορικό (localStorage), δείχνει status vs target και κάνει export σε CSV.
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2 style="margin:0 0 6px;font-size:16px;">Inputs</h2>
+
+        <div class="row2">
+          <div>
+            <label>Picker name (π.χ. Panagiotis)</label>
+            <input id="pickerName" type="text" placeholder="π.χ. Panagiotis" />
+          </div>
+          <div>
+            <label>Shift</label>
+            <select id="shift">
+              <option value="Morning">Morning</option>
+              <option value="Mid">Mid</option>
+              <option value="Evening">Evening</option>
+              <option value="Night">Night</option>
+            </select>
+          </div>
+          <div>
+            <label>Date</label>
+            <input id="date" type="date" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Picking time (sec / item)</label>
+            <input id="pickingSecPerItem" type="number" step="0.1" value="17.8" />
+          </div>
+          <div>
+            <label>Orders per hour (avg)</label>
+            <input id="ordersPerHour" type="number" step="0.1" value="7.8" />
+          </div>
+          <div>
+            <label>Avg basket items (items / order)</label>
+            <input id="avgItems" type="number" step="1" value="15" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Target orders/hour</label>
+            <input id="targetOrdersPerHour" type="number" step="0.1" value="10" />
+          </div>
+          <div>
+            <label>Target max packing (min / order)</label>
+            <input id="targetPackingMin" type="number" step="0.1" value="2.0" />
+          </div>
+          <div>
+            <label>Target max picking (sec / item)</label>
+            <input id="targetPickingSecPerItem" type="number" step="0.1" value="20.0" />
+          </div>
+        </div>
+
+        <div class="btns">
+          <button class="primary" id="saveBtn">Save entry</button>
+          <button id="calcBtn">Recalculate</button>
+          <button id="clearInputsBtn">Clear inputs</button>
+        </div>
+
+        <div class="out" id="output" aria-live="polite"></div>
+        <div class="footer">
+          Τύπος: packing_sec_order = (3600 / orders_hour) − (picking_sec_item × avg_items). Αν βγει αρνητικό, γίνεται 0.
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin:0 0 6px;font-size:16px;">Filters & Export</h2>
+
+        <div class="row">
+          <div>
+            <label>Filter by picker</label>
+            <select id="filterPicker">
+              <option value="">All</option>
+            </select>
+          </div>
+          <div>
+            <label>From date</label>
+            <input id="fromDate" type="date" />
+          </div>
+          <div>
+            <label>To date</label>
+            <input id="toDate" type="date" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Search (name/shift)</label>
+            <input id="search" type="text" placeholder="π.χ. Panagiotis ή Evening" />
+          </div>
+          <div>
+            <label>Sort</label>
+            <select id="sortBy">
+              <option value="date_desc">Date (newest)</option>
+              <option value="date_asc">Date (oldest)</option>
+              <option value="packing_desc">Packing (highest)</option>
+              <option value="packing_asc">Packing (lowest)</option>
+              <option value="oph_desc">Orders/hour (highest)</option>
+              <option value="oph_asc">Orders/hour (lowest)</option>
+            </select>
+          </div>
+          <div>
+            <label>Show only</label>
+            <select id="onlyStatus">
+              <option value="">All</option>
+              <option value="OK">OK</option>
+              <option value="WARN">WARN</option>
+              <option value="BAD">BAD</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="btns">
+          <button id="exportCsvBtn">Export CSV (filtered)</button>
+          <button class="danger" id="wipeAllBtn">Wipe ALL history</button>
+        </div>
+
+        <div class="muted" style="margin-top:8px;">
+          Το ιστορικό αποθηκεύεται τοπικά στον browser (δεν ανεβαίνει πουθενά).
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin:0 0 6px;font-size:16px;">History</h2>
+      <div id="summary" class="muted"></div>
+      <div style="overflow:auto; max-height: 420px; border-radius: 12px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Picker</th>
+              <th>Shift</th>
+              <th>Picking (sec/item)</th>
+              <th>Orders/hour</th>
+              <th>Avg items</th>
+              <th>Packing (min/order)</th>
+              <th>Cycle (min/order)</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // --------- Utilities ----------
+  const STORAGE_KEY = "packing_time_tool_history_v1";
+
+  function nowIsoDateLocal() {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  function clampNonNeg(x) { return Math.max(0, x); }
+
+  function fmt(n, digits=2) {
+    if (!Number.isFinite(n)) return "—";
+    return Number(n).toFixed(digits);
+  }
+
+  function minSec(seconds) {
+    const s = Math.round(clampNonNeg(seconds));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}m ${String(r).padStart(2, "0")}s`;
+  }
+
+  function toNumber(id) {
+    const v = Number(document.getElementById(id).value);
+    return v;
+  }
+
+  function cleanText(s) {
+    return String(s ?? "").trim();
+  }
+
+  function uid() {
+    return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  }
+
+  function parseDate(s) {
+    // YYYY-MM-DD -> Date
+    if (!s) return null;
+    const [y,m,d] = s.split("-").map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m-1, d);
+  }
+
+  function compareDates(a, b) {
+    // compare strings YYYY-MM-DD safely
+    return (a < b) ? -1 : (a > b) ? 1 : 0;
+  }
+
+  // --------- Core math ----------
+  function compute({ pickingSecPerItem, ordersPerHour, avgItems }) {
+    // per order
+    const cycleSecPerOrder = 3600 / ordersPerHour;
+    const pickingSecPerOrder = pickingSecPerItem * avgItems;
+    const packingSecPerOrder = clampNonNeg(cycleSecPerOrder - pickingSecPerOrder);
+
+    return {
+      cycleSecPerOrder,
+      pickingSecPerOrder,
+      packingSecPerOrder,
+      cycleMinPerOrder: cycleSecPerOrder / 60,
+      pickingMinPerOrder: pickingSecPerOrder / 60,
+      packingMinPerOrder: packingSecPerOrder / 60,
+    };
+  }
+
+  function statusFor(entry) {
+    // OK if meets targets, WARN if slightly off, BAD if clearly off
+    const tOph = entry.targets.targetOrdersPerHour;
+    const tPick = entry.targets.targetPickingSecPerItem;
+    const tPack = entry.targets.targetPackingMin;
+
+    const ophOk = entry.ordersPerHour >= tOph;
+    const pickOk = entry.pickingSecPerItem <= tPick;
+    const packOk = entry.packingMinPerOrder <= tPack;
+
+    const okCount = [ophOk, pickOk, packOk].filter(Boolean).length;
+
+    // If any is very off, mark BAD
+    const ophVeryOff = entry.ordersPerHour < (tOph * 0.85);
+    const pickVeryOff = entry.pickingSecPerItem > (tPick * 1.20);
+    const packVeryOff = entry.packingMinPerOrder > (tPack * 1.25);
+
+    if (ophVeryOff || pickVeryOff || packVeryOff) return "BAD";
+
+    if (okCount === 3) return "OK";
+    if (okCount === 2) return "WARN";
+    return "BAD";
+  }
+
+  function pillClass(status) {
+    if (status === "OK") return "pill ok";
+    if (status === "WARN") return "pill warn";
+    return "pill bad";
+  }
+
+  // --------- State ----------
+  let history = [];
+
+  function loadHistory() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      history = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(history)) history = [];
+    } catch {
+      history = [];
+    }
+  }
+
+  function saveHistory() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+  }
+
+  function upsertPickerFilterOptions() {
+    const sel = document.getElementById("filterPicker");
+    const current = sel.value;
+    const names = Array.from(new Set(history.map(h => h.pickerName).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+    sel.innerHTML = `<option value="">All</option>` + names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
+    sel.value = names.includes(current) ? current : "";
+  }
+
+  function escapeHtml(s) {
+    return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+  }
+
+  // --------- Rendering ----------
+  function renderOutput() {
+    const output = document.getElementById("output");
+
+    const pickerName = cleanText(document.getElementById("pickerName").value);
+    const pickingSecPerItem = toNumber("pickingSecPerItem");
+    const ordersPerHour = toNumber("ordersPerHour");
+    const avgItems = toNumber("avgItems");
+
+    const targetOrdersPerHour = toNumber("targetOrdersPerHour");
+    const targetPackingMin = toNumber("targetPackingMin");
+    const targetPickingSecPerItem = toNumber("targetPickingSecPerItem");
+
+    if (!(pickingSecPerItem > 0) || !(ordersPerHour > 0) || !(avgItems > 0)) {
+      output.innerHTML = `<div class="big">Δώσε θετικές τιμές σε picking / orders/hour / avg items.</div>`;
+      return;
+    }
+
+    const calc = compute({ pickingSecPerItem, ordersPerHour, avgItems });
+
+    const tmpEntry = {
+      pickerName: pickerName || "(no name)",
+      pickingSecPerItem, ordersPerHour, avgItems,
+      packingMinPerOrder: calc.packingMinPerOrder,
+      cycleMinPerOrder: calc.cycleMinPerOrder,
+      targets: { targetOrdersPerHour, targetPackingMin, targetPickingSecPerItem }
+    };
+
+    const st = statusFor(tmpEntry);
+    const statusLabel = st === "OK" ? "OK" : (st === "WARN" ? "WARN" : "BAD");
+    const statusClass = st === "OK" ? "ok" : (st === "WARN" ? "warn" : "bad");
+
+    // show where the gap is
+    const gaps = [];
+    if (ordersPerHour < targetOrdersPerHour) gaps.push(`orders/hour κάτω από target (${fmt(ordersPerHour,1)} < ${fmt(targetOrdersPerHour,1)})`);
+    if (pickingSecPerItem > targetPickingSecPerItem) gaps.push(`picking sec/item πάνω από target (${fmt(pickingSecPerItem,1)} > ${fmt(targetPickingSecPerItem,1)})`);
+    if (calc.packingMinPerOrder > targetPackingMin) gaps.push(`packing πάνω από target (${fmt(calc.packingMinPerOrder,2)}m > ${fmt(targetPackingMin,2)}m)`);
+
+    const gapLine = gaps.length ? `<div class="muted" style="margin-top:6px;">Σημείο πίεσης: ${escapeHtml(gaps.join(" • "))}</div>` : `<div class="muted" style="margin-top:6px;">Όλα εντός targets ✅</div>`;
+
+    output.innerHTML = `
+      <div class="big">Packing: ${fmt(calc.packingMinPerOrder,2)} min/order <span class="${statusClass}">(${statusLabel})</span></div>
+      <div class="muted">Packing σε χρόνο: <b>${minSec(calc.packingSecPerOrder)}</b></div>
+      <hr style="border:none;border-top:1px solid #e4e4e4;margin:10px 0;" />
+      <div><b>Cycle</b>: ${fmt(calc.cycleMinPerOrder,2)} min/order (${minSec(calc.cycleSecPerOrder)})</div>
+      <div><b>Picking per order</b>: ${fmt(calc.pickingMinPerOrder,2)} min/order (${minSec(calc.pickingSecPerOrder)})</div>
+      ${gapLine}
+    `;
+  }
+
+  function getFilteredHistory() {
+    const fp = document.getElementById("filterPicker").value;
+    const from = document.getElementById("fromDate").value;
+    const to = document.getElementById("toDate").value;
+    const q = cleanText(document.getElementById("search").value).toLowerCase();
+    const onlyStatus = document.getElementById("onlyStatus").value;
+
+    let rows = history.slice();
+
+    if (fp) rows = rows.filter(r => r.pickerName === fp);
+
+    if (from) rows = rows.filter(r => compareDates(r.date, from) >= 0);
+    if (to) rows = rows.filter(r => compareDates(r.date, to) <= 0);
+
+    if (q) {
+      rows = rows.filter(r =>
+        (r.pickerName || "").toLowerCase().includes(q) ||
+        (r.shift || "").toLowerCase().includes(q)
+      );
+    }
+
+    if (onlyStatus) rows = rows.filter(r => r.status === onlyStatus);
+
+    // sort
+    const sortBy = document.getElementById("sortBy").value;
+    const byNum = (a,b, key, dir) => dir * ((a[key] ?? 0) - (b[key] ?? 0));
+    const dir = (x) => x === "asc" ? 1 : -1;
+
+    if (sortBy === "date_desc") rows.sort((a,b)=>-compareDates(a.date,b.date));
+    else if (sortBy === "date_asc") rows.sort((a,b)=>compareDates(a.date,b.date));
+    else if (sortBy === "packing_desc") rows.sort((a,b)=>byNum(a,b,"packingMinPerOrder",-1));
+    else if (sortBy === "packing_asc") rows.sort((a,b)=>byNum(a,b,"packingMinPerOrder",1));
+    else if (sortBy === "oph_desc") rows.sort((a,b)=>byNum(a,b,"ordersPerHour",-1));
+    else if (sortBy === "oph_asc") rows.sort((a,b)=>byNum(a,b,"ordersPerHour",1));
+
+    return rows;
+  }
+
+  function renderHistory() {
+    const body = document.getElementById("historyBody");
+    const summary = document.getElementById("summary");
+    const rows = getFilteredHistory();
+
+    // Summary
+    const n = rows.length;
+    const avg = (arr, k) => arr.reduce((s,r)=>s+(Number(r[k])||0),0) / (arr.length || 1);
+    const avgPack = avg(rows, "packingMinPerOrder");
+    const avgPick = avg(rows, "pickingSecPerItem");
+    const avgOph  = avg(rows, "ordersPerHour");
+
+    const okCount = rows.filter(r=>r.status==="OK").length;
+    const warnCount = rows.filter(r=>r.status==="WARN").length;
+    const badCount = rows.filter(r=>r.status==="BAD").length;
+
+    summary.innerHTML = n
+      ? `Entries: <b>${n}</b> • Avg packing: <b>${fmt(avgPack,2)}m</b> • Avg picking: <b>${fmt(avgPick,1)} sec/item</b> • Avg orders/hour: <b>${fmt(avgOph,1)}</b> • OK/WARN/BAD: <b>${okCount}</b>/<b>${warnCount}</b>/<b>${badCount}</b>`
+      : `No entries yet.`;
+
+    // Rows
+    body.innerHTML = rows.map(r => `
+      <tr>
+        <td>${escapeHtml(r.date)}</td>
+        <td>${escapeHtml(r.pickerName)}</td>
+        <td>${escapeHtml(r.shift)}</td>
+        <td>${fmt(r.pickingSecPerItem,1)}</td>
+        <td>${fmt(r.ordersPerHour,1)}</td>
+        <td>${fmt(r.avgItems,0)}</td>
+        <td><b>${fmt(r.packingMinPerOrder,2)}</b></td>
+        <td>${fmt(r.cycleMinPerOrder,2)}</td>
+        <td><span class="${pillClass(r.status)}">${escapeHtml(r.status)}</span></td>
+        <td>
+          <button data-act="load" data-id="${escapeHtml(r.id)}">Load</button>
+          <button class="danger" data-act="del" data-id="${escapeHtml(r.id)}">Delete</button>
+        </td>
+      </tr>
+    `).join("");
+
+    // attach actions
+    body.querySelectorAll("button[data-act]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-id");
+        const act = btn.getAttribute("data-act");
+        if (act === "del") deleteEntry(id);
+        if (act === "load") loadEntryToInputs(id);
+      });
+    });
+  }
+
+  function rerenderAll() {
+    upsertPickerFilterOptions();
+    renderOutput();
+    renderHistory();
+  }
+
+  // --------- Actions ----------
+  function saveEntry() {
+    const pickerName = cleanText(document.getElementById("pickerName").value);
+    const shift = document.getElementById("shift").value;
+    const date = document.getElementById("date").value || nowIsoDateLocal();
+
+    const pickingSecPerItem = toNumber("pickingSecPerItem");
+    const ordersPerHour = toNumber("ordersPerHour");
+    const avgItems = toNumber("avgItems");
+
+    const targetOrdersPerHour = toNumber("targetOrdersPerHour");
+    const targetPackingMin = toNumber("targetPackingMin");
+    const targetPickingSecPerItem = toNumber("targetPickingSecPerItem");
+
+    if (!pickerName) {
+      alert("Βάλε picker name για να το σώσουμε.");
+      return;
+    }
+    if (!(pickingSecPerItem > 0) || !(ordersPerHour > 0) || !(avgItems > 0)) {
+      alert("Βάλε θετικές τιμές σε picking / orders/hour / avg items.");
+      return;
+    }
+
+    const calc = compute({ pickingSecPerItem, ordersPerHour, avgItems });
+
+    const entry = {
+      id: uid(),
+      date,
+      pickerName,
+      shift,
+      pickingSecPerItem,
+      ordersPerHour,
+      avgItems,
+      packingMinPerOrder: calc.packingMinPerOrder,
+      cycleMinPerOrder: calc.cycleMinPerOrder,
+      targets: { targetOrdersPerHour, targetPackingMin, targetPickingSecPerItem },
+      createdAt: new Date().toISOString(),
+    };
+    entry.status = statusFor(entry);
+
+    history.push(entry);
+    saveHistory();
+    rerenderAll();
+  }
+
+  function deleteEntry(id) {
+    const idx = history.findIndex(h => h.id === id);
+    if (idx < 0) return;
+    if (!confirm("Delete this entry?")) return;
+    history.splice(idx, 1);
+    saveHistory();
+    rerenderAll();
+  }
+
+  function loadEntryToInputs(id) {
+    const r = history.find(h => h.id === id);
+    if (!r) return;
+    document.getElementById("pickerName").value = r.pickerName || "";
+    document.getElementById("shift").value = r.shift || "Morning";
+    document.getElementById("date").value = r.date || nowIsoDateLocal();
+
+    document.getElementById("pickingSecPerItem").value = r.pickingSecPerItem;
+    document.getElementById("ordersPerHour").value = r.ordersPerHour;
+    document.getElementById("avgItems").value = r.avgItems;
+
+    // load targets too
+    if (r.targets) {
+      document.getElementById("targetOrdersPerHour").value = r.targets.targetOrdersPerHour ?? 10;
+      document.getElementById("targetPackingMin").value = r.targets.targetPackingMin ?? 2.0;
+      document.getElementById("targetPickingSecPerItem").value = r.targets.targetPickingSecPerItem ?? 20.0;
+    }
+
+    renderOutput();
+  }
+
+  function exportCsv() {
+    const rows = getFilteredHistory();
+    if (!rows.length) {
+      alert("Δεν υπάρχουν entries για export με τα φίλτρα που έχεις βάλει.");
+      return;
+    }
+
+    const header = [
+      "date","pickerName","shift",
+      "pickingSecPerItem","ordersPerHour","avgItems",
+      "packingMinPerOrder","cycleMinPerOrder",
+      "status",
+      "targetOrdersPerHour","targetPackingMin","targetPickingSecPerItem",
+      "createdAt"
+    ];
+
+    const esc = (v) => {
+      const s = String(v ?? "");
+      if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+        return `"${s.replaceAll('"','""')}"`;
+      }
+      return s;
+    };
+
+    const lines = [
+      header.join(","),
+      ...rows.map(r => [
+        r.date, r.pickerName, r.shift,
+        fmt(r.pickingSecPerItem, 2),
+        fmt(r.ordersPerHour, 2),
+        fmt(r.avgItems, 0),
+        fmt(r.packingMinPerOrder, 3),
+        fmt(r.cycleMinPerOrder, 3),
+        r.status,
+        r.targets?.targetOrdersPerHour ?? "",
+        r.targets?.targetPackingMin ?? "",
+        r.targets?.targetPickingSecPerItem ?? "",
+        r.createdAt ?? ""
+      ].map(esc).join(","))
+    ];
+
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `packing_time_export_${nowIsoDateLocal()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 500);
+  }
+
+  function wipeAll() {
+    if (!confirm("ΣΙΓΟΥΡΑ θες να σβήσεις ΟΛΟ το ιστορικό;")) return;
+    history = [];
+    saveHistory();
+    rerenderAll();
+  }
+
+  function clearInputs() {
+    document.getElementById("pickerName").value = "";
+    document.getElementById("shift").value = "Morning";
+    document.getElementById("date").value = nowIsoDateLocal();
+
+    document.getElementById("pickingSecPerItem").value = 17.8;
+    document.getElementById("ordersPerHour").value = 7.8;
+    document.getElementById("avgItems").value = 15;
+    // keep targets as-is
+    renderOutput();
+  }
+
+  // --------- Init ----------
+  (function init() {
+    document.getElementById("date").value = nowIsoDateLocal();
+
+    loadHistory();
+    upsertPickerFilterOptions();
+    rerenderAll();
+
+    // input listeners
+    ["pickerName","shift","date","pickingSecPerItem","ordersPerHour","avgItems","targetOrdersPerHour","targetPackingMin","targetPickingSecPerItem"]
+      .forEach(id => document.getElementById(id).addEventListener("input", renderOutput));
+
+    ["filterPicker","fromDate","toDate","search","sortBy","onlyStatus"]
+      .forEach(id => document.getElementById(id).addEventListener("input", renderHistory));
+
+    // buttons
+    document.getElementById("calcBtn").addEventListener("click", rerenderAll);
+    document.getElementById("saveBtn").addEventListener("click", saveEntry);
+    document.getElementById("exportCsvBtn").addEventListener("click", exportCsv);
+    document.getElementById("wipeAllBtn").addEventListener("click", wipeAll);
+    document.getElementById("clearInputsBtn").addEventListener("click", clearInputs);
+
+    // quick keyboard: Ctrl+Enter saves
+    document.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        saveEntry();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
